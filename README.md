@@ -106,12 +106,15 @@ gradle/                    Gradle wrapper
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Current state](docs/CURRENT_STATE.md)
+- [Roadmap](docs/ROADMAP.md)
+- [AI model and runtime](docs/AI_MODEL.md)
 - [Models](docs/MODELS.md)
 - [Integrations](docs/INTEGRATIONS.md)
 - [Reliability](docs/RELIABILITY.md)
 - [Privacy](docs/PRIVACY.md)
 - [Security](docs/SECURITY.md)
-- [Development plan](docs/DEVELOPMENT_PLAN.md)
+- [Architecture decisions](docs/DECISIONS.md)
 
 ## Known Limitations
 

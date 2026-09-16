@@ -1,0 +1,87 @@
+# Roadmap
+
+LocalMind will evolve through small buildable milestones. Dates are intentionally omitted
+until physical-device measurements establish realistic scope.
+
+## Milestone 0: Audited Baseline
+
+Status: complete
+
+- Document the current runtime, model, tools, storage, permissions, and known failures.
+- Keep the existing build green.
+- Record ADK and model decisions without adding dependencies.
+
+Exit criteria: documentation matches code; JVM tests and debug assembly pass.
+
+## Milestone 1: Durable Local Foundations
+
+Status: next
+
+- Introduce a small repository boundary and Room database for explicit memories and reminders.
+- Implement add, list, edit, delete, and clear for memories without embeddings initially.
+- Implement deterministic date/time parsing and Android reminder scheduling.
+- Add visible confirmation for reminder creation and deletion.
+- Add a minimal privacy/data screen showing only implemented stores and controls.
+- Move large selected-file reads off the UI thread and stream to a bounded size.
+- Add JVM tests and focused Android instrumentation tests for persistence and reminder flows.
+
+Exit criteria: with networking disabled, a user can explicitly save a fact, retrieve it,
+inspect/delete it, and create a verifiable local reminder without an LLM-generated tool call.
+
+## Milestone 2: Model And Runtime Benchmark
+
+- Add opt-in debug measurements for load time, first response latency, generation time,
+  tokens per second when exposed by the runtime, and process memory.
+- Benchmark Qwen3 0.6B, Gemma 3 1B, Gemma 3n E2B, and Gemma 4 E2B on a representative
+  4 GB phone before changing defaults.
+- Measure cold and warm runs, failure rate, storage, battery, and thermal behavior.
+- Select a licensed distribution approach and retain a recovery model.
+
+Exit criteria: `AI_MODEL.md` contains reproducible device measurements and a justified
+default/fallback decision.
+
+## Milestone 3: Agent Foundation
+
+- Complete a JDK 21 and APK/RAM compatibility spike for ADK Kotlin.
+- Compare ADK LiteRT-LM tool calling with the existing deterministic coordinator.
+- Keep Android tools typed, independently testable, and policy-gated.
+- Add persistent session state only after its privacy and deletion behavior are defined.
+- Never allow model text to bypass validation or confirmation.
+
+Exit criteria: one local model can propose a typed action, the app validates it, and a
+confirmed test action executes with an auditable structured result.
+
+## Milestone 4: Local Documents
+
+- Replace SharedPreferences document storage with bounded metadata and file records.
+- Add streaming plain-text extraction, then PDF extraction, then opt-in OCR.
+- Chunk and index extracted text locally.
+- Start with keyword retrieval; add local embeddings only if benchmarks justify them.
+- Display source citations and provide an Open file action.
+
+Exit criteria: a user-selected bill can be found and summarized offline with a source link.
+
+## Milestone 5: Vertical Slice
+
+- Combine local document retrieval, explicit memory, and Android reminders.
+- Support: find a selected bill, report the amount, save it when asked, and propose a reminder.
+- Add failure recovery and a formal 4 GB acceptance run.
+
+Exit criteria: the complete electricity-bill workflow works in airplane mode without OOM
+on the target 4 GB test device.
+
+## Later Milestones
+
+- Photo metadata and user-controlled OCR indexing.
+- Conversation history, search, regenerate, edit, share, and stop generation.
+- Offline speech input and TTS after device/runtime evaluation.
+- Authenticated external integrations one at a time, with scopes and consent documented.
+- Accessibility, dark theme, onboarding, release hardening, CI, and distribution.
+
+## Explicit Non-Goals
+
+- Hidden cloud inference or mandatory accounts.
+- Reading private app databases.
+- Unattended message or email sending.
+- General UI automation through Accessibility Service.
+- Loading every model, index, and ML component at once.

@@ -1,6 +1,7 @@
 package ai.localmind
 
 import ai.localmind.device.SharedContentStore
+import ai.localmind.device.readBoundedText
 import ai.localmind.device.BasicDeviceAction
 import ai.localmind.device.BasicDeviceActionParser
 import ai.localmind.device.BasicDeviceActions
@@ -615,12 +616,35 @@ class MainActivity : Activity() {
     private fun importDriveDocument(uri: Uri) {
         runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-        val text = if (mimeType.startsWith("text/")) runCatching {
-            contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText().take(MAX_IMPORTED_TEXT_CHARS) }
-        }.getOrNull() else null
-        SharedContentStore(this).add(mimeType, text, uri.toString())
-        addAssistantMessage(if (text != null) "Added the selected document text to the local inbox." else "Added the selected document to the local inbox. Its contents have not been extracted yet.")
-        recordActivity("Drive document selected", mimeType)
+        generating = true
+        setComposerEnabled(false)
+        val pending = addAssistantMessage("Adding the selected document locally...")
+        fileExecutor.execute {
+            val result = runCatching {
+                val text = if (mimeType.startsWith("text/")) {
+                    contentResolver.openInputStream(uri)?.bufferedReader()?.use {
+                        readBoundedText(it, MAX_IMPORTED_TEXT_CHARS)
+                    }
+                } else null
+                SharedContentStore(applicationContext).add(mimeType, text, uri.toString())
+                text
+            }
+            runOnUiThread {
+                pending.text = ResponseFormatter.format(
+                    result.fold(
+                        onSuccess = { text ->
+                            if (text != null) "Added the selected document text to the local inbox."
+                            else "Added the selected document to the local inbox. Its contents have not been extracted yet."
+                        },
+                        onFailure = { "The selected document could not be added to the local inbox." }
+                    )
+                )
+                generating = false
+                setComposerEnabled(true)
+                recordActivity(if (result.isSuccess) "Drive document selected" else "Document import failed", mimeType)
+                scrollToBottom()
+            }
+        }
     }
 
     private fun searchLocalInbox(query: String) {

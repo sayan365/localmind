@@ -1,5 +1,7 @@
 package ai.localmind.device
 
+import java.io.Reader
+
 data class SharedContent(
     val id: String,
     val mimeType: String,
@@ -27,3 +29,21 @@ fun searchSharedContent(items: List<SharedContent>, query: String): List<SharedC
     }.sortedWith(compareByDescending<Pair<SharedContent, Int>> { it.second }.thenByDescending { it.first.receivedAt })
         .map(Pair<SharedContent, Int>::first)
 }
+
+fun readBoundedText(reader: Reader, maxChars: Int): String {
+    require(maxChars >= 0) { "maxChars must not be negative" }
+    if (maxChars == 0) return ""
+
+    val output = StringBuilder(minOf(maxChars, READ_BUFFER_CHARS))
+    val buffer = CharArray(minOf(maxChars, READ_BUFFER_CHARS))
+    while (output.length < maxChars) {
+        val requested = minOf(buffer.size, maxChars - output.length)
+        val count = reader.read(buffer, 0, requested)
+        if (count < 0) break
+        if (count == 0) continue
+        output.append(buffer, 0, count)
+    }
+    return output.toString()
+}
+
+private const val READ_BUFFER_CHARS = 8 * 1024

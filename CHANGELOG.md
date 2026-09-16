@@ -10,6 +10,11 @@ All notable changes will be documented in this file.
 - Resumable and integrity-checked local model management.
 - Guarded device actions, communication drafts, Calendar creation, Drive selection, and local inbox search.
 - Android/JVM unit tests and public project documentation.
+- Audited current-state, architecture, model, roadmap, integration, and ADK decision documentation.
+
+### Changed
+
+- Plain-text document imports now use bounded background streaming instead of reading the complete file on the UI thread.
 
 ### Known Limitations
 

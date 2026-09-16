@@ -1,39 +1,96 @@
 # Architecture
 
-LocalMind separates conversational inference from device actions. The language model produces text only; it does not receive an unrestricted tool bridge.
+Last audited: 2026-09-17
 
-## Runtime Paths
+LocalMind is a single-module native Android application. It uses classic Android Views
+created in Kotlin code; it does not use Compose, a backend, or a cloud inference service.
+
+## Current Runtime
 
 ```text
-Conversation
-MainActivity -> OnDeviceChatEngine -> LiteRT-LM -> formatted local response
-
-Device action
-MainActivity -> BasicDeviceActionParser -> confirmation/permission -> Android adapter -> result
-
-Structured agent foundation
-AgentController -> ToolRegistry -> risk gate -> tool -> observation/verification
+MainActivity
+  |-- deterministic request parsing
+  |     |-- app launch / flashlight / media / volume
+  |     |-- confirmed WhatsApp and email handoffs
+  |     |-- confirmed Calendar provider write + verification
+  |     `-- system document picker + local inbox search
+  |
+  `-- ordinary conversation
+        `-- OnDeviceChatEngine
+              `-- LiteRtChatEngine
+                    `-- LiteRT-LM Engine / one Conversation per turn
 ```
+
+`BasicDeviceActionParser` runs before model generation. Model text cannot invoke Android
+APIs. Supported actions are represented by a sealed type and routed explicitly by
+`MainActivity`.
 
 ## Components
 
-- `MainActivity`: chat UI, model lifecycle, confirmations, permissions, and user-visible status.
-- `LiteRtChatEngine`: local LiteRT-LM conversation implementation.
-- `LocalModelCatalog`: supported model metadata, hardware tiers, expected sizes, and integrity digests.
-- `LocalModelStore`: app-specific model storage, resumable parts, activation, and completion markers.
-- `ModelDownloadService`: foreground, resumable HTTP range downloader.
-- `BasicDeviceActionParser`: deterministic natural-language parser for the supported action allowlist.
-- `BasicDeviceActions`: flashlight, media, volume, and allowlisted app-launch adapters.
-- `AndroidCalendarConnector`: confirmed Calendar provider creation and verification.
-- `WhatsAppHandoff` and `EmailHandoff`: user-controlled draft intents.
-- `SharedContentStore`: local metadata/text inbox populated through Android sharing and document selection.
-- `AgentController` and `ToolRegistry`: tested structured-agent foundation retained for future validated plans.
+| Component | Current responsibility |
+| --- | --- |
+| `MainActivity` | Builds the UI, owns transient chat state, routes actions, requests permissions, and manages the model lifecycle |
+| `LiteRtChatEngine` | Initializes LiteRT-LM, builds bounded prompts, generates responses, and removes hidden reasoning markers |
+| `LocalModelCatalog` | Declares model files, sizes, memory recommendations, context limits, and backends |
+| `LocalModelStore` | Stores models, download parts, integrity markers, and model selection |
+| `ModelDownloadService` | Runs foreground HTTP range downloads and assembles model files |
+| `BasicDeviceActionParser` | Maps a narrow set of user phrases to typed Android actions |
+| `BasicDeviceActions` | Implements app launch, flashlight, media-key, and volume operations |
+| `AndroidCalendarConnector` | Creates all-day Calendar provider events and verifies returned IDs |
+| `WhatsAppHandoff` / `EmailHandoff` | Creates user-controlled external draft intents |
+| `SharedContentStore` | Keeps up to 50 shared-item records in SharedPreferences |
+| `ResponseFormatter` | Renders a small Markdown subset and normalizes common math markup |
+
+## Structured Agent Foundation
+
+`AgentController`, `AgentStateMachine`, `ToolRegistry`, and `EventTrace` are a tested
+prototype for typed plans, risk levels, confirmation, and verification. They currently
+drive only synthetic JVM fixtures and are not connected to the production chat UI.
+Production actions use the simpler sealed-action path above.
+
+This distinction matters: the application does not yet have model-driven tool calling.
+
+## State And Storage
+
+- Chat messages and action context exist only in the current `MainActivity` process.
+- Model selection and download state use `local_models` SharedPreferences.
+- Shared inbox records use `shared_content` SharedPreferences.
+- Model files and range parts use app-specific external files storage.
+- LiteRT-LM cache files use the app cache directory.
+- Selected document URIs may have persistable read permission when the provider grants it.
+- There is no Room database, conversation store, memory store, embedding index, or file index.
+
+## Concurrency And Lifecycle
+
+- LiteRT-LM initialization and generation use a single-thread executor.
+- File and Calendar work use a single activity-owned executor.
+- Model cleanup uses a cached executor.
+- Downloads use a foreground service and a fixed 16-thread range worker pool.
+- The UI polls persisted download state once per second.
+- Activity recreation does not preserve the active conversation or in-flight UI state.
 
 ## Trust Boundaries
 
-- Model output is untrusted and cannot execute Android APIs directly.
-- Package names come from a fixed allowlist, never generated text.
-- Android owns runtime permission prompts.
-- Calendar writes and communication drafts require visible confirmation.
-- Handoffs are reported as handoffs, not as completed sends.
-- Personal prompt and response content is excluded from the activity trace.
+- Model output is untrusted text and cannot execute a tool directly.
+- App packages are selected from a fixed allowlist.
+- Android owns runtime permission dialogs.
+- Communication handoffs and Calendar writes require visible confirmation.
+- A handoff is never reported as a completed send.
+- Calendar success requires a provider query for the inserted event ID.
+- Imported files and shared URIs are untrusted input.
+- There is no arbitrary shell execution, Accessibility Service, or private app-data access.
+
+## Recommended Direction
+
+Keep three replaceable boundaries:
+
+```text
+Chat/UI -> Agent coordinator -> LocalModelEngine
+                         |----> Typed ToolRegistry -> Android adapters
+                         `----> Local repositories -> Room / files / search index
+```
+
+The next architecture step is not a full rewrite. First extract activity-owned state into
+small lifecycle-aware coordinators, add a durable local repository for explicit memories
+and reminders, and preserve the existing deterministic action adapters. ADK adoption is a
+separate compatibility milestone recorded in `DECISIONS.md`.

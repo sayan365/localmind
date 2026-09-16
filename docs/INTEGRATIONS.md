@@ -15,6 +15,21 @@ are not implemented.
 Before adding a connected service, document its authentication flow, scopes, API
 capabilities, rate limits, failure modes, data handling, and verification method here.
 
+## Capability Matrix
+
+| Integration | Read/search | Write/action | Offline behavior | Current status |
+| --- | --- | --- | --- | --- |
+| Android apps | No private app data | Launch fixed allowlisted packages | Yes, when installed | Implemented |
+| Flashlight | Torch callback state only | Set torch mode | Yes | Implemented; camera permission required |
+| Media | No playback metadata | Dispatch media keys; adjust music volume | Yes | Implemented; media-key completion cannot be verified |
+| WhatsApp | No chats, contacts, or documents | Open a text draft/share handoff | Draft creation is local; sending depends on WhatsApp | Implemented with confirmation and user final send |
+| Email/Gmail | No inbox access | Open a `mailto:` draft | Draft creation is local; sending requires an email app/network | Implemented with confirmation and user final send |
+| Drive/files | User-selected URI and plain text only | Import a selected reference into the local inbox | Selected locally available content can be used offline | Partial; no automatic Drive search or PDF extraction |
+| Calendar | Find a writable calendar and verify inserted IDs | Create a confirmed all-day event | Provider behavior depends on the configured calendar | Implemented for creation only |
+| Local inbox | Search stored text, MIME type, and URI metadata | Add through Share or the document picker | Yes | Implemented, not a document index or RAG system |
+| Gmail API | None | None | No | Not connected |
+| Drive API | None | None | No | Not connected |
+
 ## Basic Android Actions
 
 LocalMind supports a deterministic, allowlisted first action package:
