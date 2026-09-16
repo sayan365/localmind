@@ -12,6 +12,10 @@ import ai.localmind.device.EmailHandoff
 import ai.localmind.device.model.*
 import ai.localmind.core.CalendarEvent
 import ai.localmind.ui.ResponseFormatter
+import ai.localmind.localdata.LocalDataRepository
+import ai.localmind.localdata.MemoryRecord
+import ai.localmind.localdata.ReminderRecord
+import ai.localmind.localdata.ReminderScheduler
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.AlertDialog
@@ -35,6 +39,9 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.*
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
@@ -65,6 +72,7 @@ class MainActivity : Activity() {
     private var pendingModelNotice: String? = null
     private var pendingPermissionAction: BasicDeviceAction.SetTorch? = null
     private var pendingCalendarAction: BasicDeviceAction.CreateCalendarEvent? = null
+    private var pendingReminderAction: BasicDeviceAction.CreateReminder? = null
     private var lastBasicAction: BasicDeviceAction? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -106,6 +114,12 @@ class MainActivity : Activity() {
                 pendingCalendarAction = null
                 if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED } && action != null) executeCalendarAction(action)
                 else finishBasicAction(DeviceActionResult(false, "Calendar permission was not granted, so no event was created."), "calendar.create_event")
+            }
+            NOTIFICATION_PERMISSION_REQUEST -> {
+                val action = pendingReminderAction
+                pendingReminderAction = null
+                if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && action != null) createReminder(action)
+                else finishBasicAction(DeviceActionResult(false, "Notifications were not allowed, so no reminder was scheduled."), "reminder.create")
             }
         }
     }
@@ -180,10 +194,10 @@ class MainActivity : Activity() {
     private fun buildSuggestions(): View = HorizontalScrollView(this).apply {
         isHorizontalScrollBarEnabled = false
         addView(LinearLayout(this@MainActivity).apply {
-            addView(actionButton("Help me write", false) { requestInput.setText("Help me write a clear message"); requestInput.requestFocus() })
-            addView(actionButton("Open WhatsApp", false) { requestInput.setText("Open WhatsApp"); submitRequest() }, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(8) })
-            addView(actionButton("Flashlight on", false) { requestInput.setText("Turn on the flashlight"); submitRequest() }, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(8) })
-            addView(actionButton("Pause music", false) { requestInput.setText("Pause the music"); submitRequest() }, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(8) })
+            addView(actionButton("Help me write", false) { requestInput.setText(R.string.prompt_help_write); requestInput.requestFocus() })
+            addView(actionButton("Open WhatsApp", false) { requestInput.setText(R.string.prompt_open_whatsapp); submitRequest() }, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(8) })
+            addView(actionButton("Flashlight on", false) { requestInput.setText(R.string.prompt_flashlight_on); submitRequest() }, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(8) })
+            addView(actionButton("Pause music", false) { requestInput.setText(R.string.prompt_pause_music); submitRequest() }, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(8) })
         })
     }
 
@@ -201,6 +215,7 @@ class MainActivity : Activity() {
             menu.add(if (tracePanel.visibility == View.VISIBLE) "Hide activity" else "Show activity")
             val sharedCount = SharedContentStore(this@MainActivity).list().size
             menu.add("Shared inbox${if (sharedCount > 0) " ($sharedCount)" else ""}")
+            menu.add("My data")
             menu.add("Use Qwen3 0.6B Lite")
             menu.add("Use Gemma 3 1B")
             menu.add("Use Gemma 4 Full")
@@ -214,6 +229,7 @@ class MainActivity : Activity() {
                     "Use Qwen3 0.6B Lite" -> selectModel(LocalModelCatalog.lite)
                     "Use Gemma 3 1B" -> selectModel(LocalModelCatalog.standard)
                     "Use Gemma 4 Full" -> selectModel(LocalModelCatalog.full)
+                    "My data" -> showMyData()
                     else -> if (it.title.toString().startsWith("Shared inbox")) showSharedInbox()
                 }
                 true
@@ -311,7 +327,7 @@ class MainActivity : Activity() {
 
     private fun startModelDownloadService() {
         val intent = Intent(this, ModelDownloadService::class.java).putExtra(ModelDownloadService.EXTRA_MODEL_ID, selectedModel.id)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+        startForegroundService(intent)
     }
 
     private fun openModelDownloadPage() {
@@ -517,7 +533,7 @@ class MainActivity : Activity() {
         chatEngine?.send(request,
             onResponse = { response -> runOnUiThread { pending.text = ResponseFormatter.format(response); generating = false; setComposerEnabled(true); recordActivity("Generation completed", selectedModel.displayName); scrollToBottom() } },
             onError = { error -> runOnUiThread {
-                pending.text = "I could not complete that response locally. Please try again."
+                pending.text = getString(R.string.error_local_response)
                 generating = false; setComposerEnabled(true); recordActivity("Generation failed", error.javaClass.simpleName)
             } }
         )
@@ -533,6 +549,11 @@ class MainActivity : Activity() {
             BasicDeviceAction.PickDriveDocument -> openDriveDocumentPicker()
             is BasicDeviceAction.SearchLocalInbox -> searchLocalInbox(action.query)
             is BasicDeviceAction.CreateCalendarEvent -> confirmCalendarAction(action)
+            is BasicDeviceAction.SaveMemory -> saveMemory(action)
+            is BasicDeviceAction.SearchMemory -> searchMemories(action.query)
+            is BasicDeviceAction.DeleteMemory -> findMemoryToDelete(action.query)
+            BasicDeviceAction.ShowMemories -> showMemories()
+            is BasicDeviceAction.CreateReminder -> confirmReminder(action)
             is BasicDeviceAction.SetTorch -> {
                 if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                     pendingPermissionAction = action
@@ -556,6 +577,225 @@ class MainActivity : Activity() {
             }
         }
     }
+
+    private fun saveMemory(action: BasicDeviceAction.SaveMemory) {
+        runLocalDataAction("Saving that locally...", "Memory saved") {
+            LocalDataRepository(applicationContext).saveMemory(action.content)
+            "Remembered locally: ${action.content}"
+        }
+    }
+
+    private fun searchMemories(query: String) {
+        runLocalDataAction("Searching local memories...", "Memories searched") {
+            val matches = LocalDataRepository(applicationContext).searchMemories(query).take(5)
+            if (matches.isEmpty()) "I don't have a saved memory about '$query'."
+            else "I found ${matches.size} saved ${if (matches.size == 1) "memory" else "memories"}:\n\n" +
+                matches.joinToString("\n\n") { "- ${it.content}" }
+        }
+    }
+
+    private fun findMemoryToDelete(query: String) {
+        setLocalDataBusy(true)
+        val pending = addAssistantMessage("Finding that local memory...")
+        fileExecutor.execute {
+            val result = runCatching { LocalDataRepository(applicationContext).searchMemories(query).firstOrNull() }
+            runOnUiThread {
+                setLocalDataBusy(false)
+                result.onFailure {
+                    pending.text = getString(R.string.error_memory_read)
+                }.onSuccess { memory ->
+                    if (memory == null) {
+                        pending.text = ResponseFormatter.format("I couldn't find a saved memory about '$query'.")
+                    } else {
+                        pending.text = ResponseFormatter.format("Found a matching local memory. Review it before deletion.")
+                        confirmDeleteMemory(memory)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun confirmDeleteMemory(memory: MemoryRecord) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete this memory?")
+            .setMessage(memory.content)
+            .setNegativeButton("Cancel") { _, _ -> addAssistantMessage("Cancelled. The memory was kept.") }
+            .setPositiveButton("Delete") { _, _ -> deleteMemory(memory) }
+            .show()
+    }
+
+    private fun deleteMemory(memory: MemoryRecord) {
+        runLocalDataAction("Deleting the memory...", "Memory deleted") {
+            if (LocalDataRepository(applicationContext).deleteMemory(memory.id)) "Deleted the local memory."
+            else "The memory was already unavailable."
+        }
+    }
+
+    private fun confirmReminder(action: BasicDeviceAction.CreateReminder) {
+        AlertDialog.Builder(this)
+            .setTitle("Create reminder?")
+            .setMessage("${action.title}\n${action.displayTime}\n\nAndroid will notify you around this time. Battery settings can delay inexact reminders.")
+            .setNegativeButton("Cancel") { _, _ -> addAssistantMessage("Cancelled. No reminder was created.") }
+            .setPositiveButton("Create") { _, _ ->
+                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    pendingReminderAction = action
+                    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST)
+                } else createReminder(action)
+            }
+            .show()
+    }
+
+    private fun createReminder(action: BasicDeviceAction.CreateReminder) {
+        runLocalDataAction("Scheduling the reminder...", "Reminder scheduled") {
+            val repository = LocalDataRepository(applicationContext)
+            val reminder = repository.addReminder(action.title, action.triggerAtMillis)
+            runCatching { ReminderScheduler.schedule(applicationContext, reminder) }
+                .onFailure { repository.deleteReminder(reminder.id) }
+                .getOrThrow()
+            "Scheduled '${action.title}' around ${action.displayTime}."
+        }
+    }
+
+    private fun showMyData() {
+        setLocalDataBusy(true)
+        fileExecutor.execute {
+            val result = runCatching {
+                val repository = LocalDataRepository(applicationContext)
+                repository.listMemories().size to repository.scheduledReminders().size
+            }
+            runOnUiThread {
+                setLocalDataBusy(false)
+                result.onFailure { addAssistantMessage("Local data could not be opened.") }
+                    .onSuccess { (memoryCount, reminderCount) ->
+                        AlertDialog.Builder(this)
+                            .setTitle("My data")
+                            .setMessage("AI processing: On-device\nCloud AI: Disabled\n\nStored memories: $memoryCount\nPending reminders: $reminderCount")
+                            .setNegativeButton("Close", null)
+                            .setNeutralButton("Reminders") { _, _ -> showReminders() }
+                            .setPositiveButton("Memories") { _, _ -> showMemories() }
+                            .show()
+                    }
+            }
+        }
+    }
+
+    private fun showMemories() {
+        setLocalDataBusy(true)
+        fileExecutor.execute {
+            val result = runCatching { LocalDataRepository(applicationContext).listMemories() }
+            runOnUiThread {
+                setLocalDataBusy(false)
+                result.onFailure { addAssistantMessage("Local memories could not be opened.") }
+                    .onSuccess { memories ->
+                        if (memories.isEmpty()) {
+                            AlertDialog.Builder(this).setTitle("Memories")
+                                .setMessage("No memories saved. Say 'Remember that...' to add one locally.")
+                                .setPositiveButton("Done", null).show()
+                        } else {
+                            AlertDialog.Builder(this).setTitle("Memories")
+                                .setItems(memories.map { it.content }.toTypedArray()) { _, index -> showMemoryActions(memories[index]) }
+                                .setNegativeButton("Close", null)
+                                .setNeutralButton("Clear all") { _, _ -> confirmClearMemories(memories.size) }
+                                .show()
+                        }
+                    }
+            }
+        }
+    }
+
+    private fun showMemoryActions(memory: MemoryRecord) {
+        AlertDialog.Builder(this).setTitle("Saved memory").setMessage(memory.content)
+            .setNegativeButton("Close", null)
+            .setNeutralButton("Delete") { _, _ -> confirmDeleteMemory(memory) }
+            .setPositiveButton("Edit") { _, _ -> editMemory(memory) }
+            .show()
+    }
+
+    private fun editMemory(memory: MemoryRecord) {
+        val input = EditText(this).apply { setText(memory.content); setSelection(text.length); minLines = 2; maxLines = 5 }
+        AlertDialog.Builder(this).setTitle("Edit memory").setView(input)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save") { _, _ ->
+                val content = input.text.toString().trim()
+                if (content.isBlank()) addAssistantMessage("The memory was not changed because it was empty.")
+                else runLocalDataAction("Updating the memory...", "Memory updated") {
+                    LocalDataRepository(applicationContext).updateMemory(memory.id, content)
+                    "Updated the local memory."
+                }
+            }.show()
+    }
+
+    private fun confirmClearMemories(count: Int) {
+        AlertDialog.Builder(this).setTitle("Clear all memories?")
+            .setMessage("Permanently delete $count local ${if (count == 1) "memory" else "memories"} from this device?")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Clear all") { _, _ ->
+                runLocalDataAction("Clearing local memories...", "Memories cleared") {
+                    LocalDataRepository(applicationContext).clearMemories()
+                    "Cleared all local memories."
+                }
+            }.show()
+    }
+
+    private fun showReminders() {
+        setLocalDataBusy(true)
+        fileExecutor.execute {
+            val result = runCatching { LocalDataRepository(applicationContext).scheduledReminders() }
+            runOnUiThread {
+                setLocalDataBusy(false)
+                result.onFailure { addAssistantMessage("Local reminders could not be opened.") }
+                    .onSuccess { reminders ->
+                        if (reminders.isEmpty()) {
+                            AlertDialog.Builder(this).setTitle("Reminders")
+                                .setMessage("No pending reminders. Try 'Remind me tomorrow at 10 AM to pay the bill.'")
+                                .setPositiveButton("Done", null).show()
+                        } else {
+                            AlertDialog.Builder(this).setTitle("Pending reminders")
+                                .setItems(reminders.map { "${it.title}\n${formatReminderTime(it.triggerAt)}" }.toTypedArray()) { _, index ->
+                                    confirmDeleteReminder(reminders[index])
+                                }
+                                .setNegativeButton("Close", null).show()
+                        }
+                    }
+            }
+        }
+    }
+
+    private fun confirmDeleteReminder(reminder: ReminderRecord) {
+        AlertDialog.Builder(this).setTitle("Delete this reminder?")
+            .setMessage("${reminder.title}\n${formatReminderTime(reminder.triggerAt)}")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Delete") { _, _ ->
+                runLocalDataAction("Deleting the reminder...", "Reminder deleted") {
+                    ReminderScheduler.cancel(applicationContext, reminder)
+                    if (LocalDataRepository(applicationContext).deleteReminder(reminder.id)) "Deleted the pending reminder."
+                    else "The reminder was already unavailable."
+                }
+            }.show()
+    }
+
+    private fun runLocalDataAction(pendingText: String, activityTitle: String, work: () -> String) {
+        setLocalDataBusy(true)
+        val pending = addAssistantMessage(pendingText)
+        fileExecutor.execute {
+            val result = runCatching(work)
+            runOnUiThread {
+                pending.text = ResponseFormatter.format(result.getOrElse { "That local action could not be completed. Nothing else was changed." })
+                setLocalDataBusy(false)
+                recordActivity(if (result.isSuccess) activityTitle else "Local action failed", "device-only storage")
+                scrollToBottom()
+            }
+        }
+    }
+
+    private fun setLocalDataBusy(busy: Boolean) {
+        generating = busy
+        setComposerEnabled(!busy)
+    }
+
+    private fun formatReminderTime(triggerAt: Long): String = DateTimeFormatter
+        .ofPattern("EEE, d MMM yyyy 'at' h:mm a")
+        .format(Instant.ofEpochMilli(triggerAt).atZone(ZoneId.systemDefault()))
 
     private fun confirmWhatsAppHandoff(action: BasicDeviceAction.SendWhatsApp) {
         val recipient = action.recipientHint?.let { " for $it" }.orEmpty()
@@ -792,6 +1032,7 @@ class MainActivity : Activity() {
         private const val CAMERA_PERMISSION_REQUEST = 73
         private const val CALENDAR_PERMISSION_REQUEST = 74
         private const val DRIVE_DOCUMENT_REQUEST = 75
+        private const val NOTIFICATION_PERMISSION_REQUEST = 76
         private const val MAX_IMPORTED_TEXT_CHARS = 250_000
         private const val DOWNLOAD_SPEED_SAMPLE_MS = 3_000L
         private const val GPU_INITIALIZATION_TIMEOUT_MS = 30_000L

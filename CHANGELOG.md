@@ -11,10 +11,14 @@ All notable changes will be documented in this file.
 - Guarded device actions, communication drafts, Calendar creation, Drive selection, and local inbox search.
 - Android/JVM unit tests and public project documentation.
 - Audited current-state, architecture, model, roadmap, integration, and ADK decision documentation.
+- Room-backed explicit memories with inspect, search, edit, delete, and clear flows.
+- Confirmed on-device reminders with notification permission, reboot restoration, and overdue expiry.
+- Android instrumentation coverage for memory persistence and reminder delivery state.
 
 ### Changed
 
 - Plain-text document imports now use bounded background streaming instead of reading the complete file on the UI thread.
+- The overflow menu now owns a compact `My data` surface for local memories and pending reminders.
 
 ### Known Limitations
 

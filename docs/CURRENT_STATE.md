@@ -18,14 +18,14 @@ as implemented.
 | compileSdk / targetSdk | 34 / 34 |
 | minSdk | 26 |
 | Version | 0.1.0 (versionCode 1) |
-| Production dependencies | LiteRT-LM Android 0.16.1 only |
-| Test dependency | JUnit 4.13.2 |
-| Debug APK | 50,082,056 bytes in the latest local build |
+| Production dependencies | LiteRT-LM Android 0.16.1; Room 2.8.5 |
+| Test dependencies | JUnit 4.13.2; AndroidX Test runner 1.7.0; ext.junit 1.3.0 |
+| Debug APK | Generated at `androidApp/build/outputs/apk/debug/androidApp-debug.apk` |
 
-The last audit build completed `testDebugUnitTest` and `assembleDebug`. It contained 32
-passing JVM tests in four suites. No Android device was connected during this audit, so
-instrumentation, startup, model load, inference, memory, battery, and thermal behavior
-were not measured.
+The current verification run completed `testDebugUnitTest`, `assembleDebug`, and
+`connectedDebugAndroidTest`. JVM tests pass, and three Room/reminder integration tests pass
+on the API 36 `Medium_Phone` emulator. Model inference, battery, thermal behavior, and a
+representative 4 GB physical-device run remain unmeasured for this milestone.
 
 ## What Works In Code
 
@@ -40,6 +40,9 @@ were not measured.
 - Confirmed all-day Calendar event creation and provider-ID verification.
 - User-controlled document selection and local search over stored plain text, MIME type, and URI metadata.
 - Android share target for text and URI references.
+- Room-backed explicit memories with local search, edit, delete, and clear controls.
+- Confirmed local reminders using `AlarmManager`, notifications, and reboot restoration.
+- A `My data` dialog that reports and exposes the implemented memory and reminder stores.
 - In-memory activity trace that avoids prompt and response bodies.
 
 ## Partial Or Experimental
@@ -55,15 +58,13 @@ were not measured.
 ## Not Implemented
 
 - Durable conversation history, editing, regeneration, conversation search, or stop-generation UI.
-- User-controlled memory CRUD or semantic memory retrieval.
-- Room/SQLite, embeddings, vector search, AppSearch, or document chunking.
+- Semantic memory retrieval, embeddings, vector search, AppSearch, or document chunking.
 - PDF/Office extraction, OCR, photo indexing, image understanding, contacts, or notes.
-- Android reminders/alarms and notification permission UX.
 - Voice input, offline speech recognition, or text-to-speech.
-- Privacy/settings center, per-source indexing controls, or in-app data deletion controls.
+- Full privacy/settings center or per-source indexing controls.
 - Authenticated Gmail search, automatic Drive search, or WhatsApp history access.
 - Model-driven production tool calling.
-- Dark theme, formal accessibility audit, instrumentation tests, benchmark tests, release signing, or CI.
+- Dark theme, formal accessibility audit, benchmark tests, release signing, or CI.
 
 ## Known Problems And Risks
 
@@ -72,12 +73,12 @@ were not measured.
 3. Model assembly temporarily needs space for both all part files and the assembled model. Verification then reads the complete file again.
 4. Plain-text document imports are now streamed off the UI thread and capped at 250,000 characters, but cancellation and encoding selection are not exposed.
 5. Up to 50 large text records are serialized as one SharedPreferences JSON value. This is not suitable for a real document index.
-6. `MainActivity` is over 700 lines and owns UI, model lifecycle, download presentation, permissions, persistence calls, and action routing.
+6. `MainActivity` remains large and owns UI, model lifecycle, download presentation, permissions, persistence calls, and action routing.
 7. Rotation or process death loses chat and pending UI state. There is no `ViewModel` or saved-state layer.
 8. Manual model selection is not blocked by measured available memory; incompatibility is handled only after initialization fails or times out.
 9. The Lite model can be recommended on devices reporting less than its declared 4 GiB minimum because the catalog has no lower tier.
-10. The app has no `POST_NOTIFICATIONS` flow on Android 13+, so foreground download notification visibility needs device verification.
-11. There are no device tests for intents, providers, permissions, service restart, cancellation, or model runtime behavior.
+10. Device tests cover Room persistence and reminder delivery state, but not external intents, providers, permission denial, service restart, cancellation, or model runtime behavior.
+11. Reminder scheduling is intentionally inexact and may be delayed by Android battery management.
 12. No representative 4 GB performance baseline exists yet.
 
 ## Permissions
@@ -91,18 +92,22 @@ were not measured.
 | `MODIFY_AUDIO_SETTINGS` | Media volume adjustment and media keys | No |
 | `READ_CALENDAR` | Select and verify Calendar provider data | Yes, after confirmation |
 | `WRITE_CALENDAR` | Insert a confirmed event | Yes, after confirmation |
+| `POST_NOTIFICATIONS` | Show confirmed local reminders | Yes, when the first reminder is created on Android 13+ |
+| `RECEIVE_BOOT_COMPLETED` | Restore future pending reminders after restart | No |
 
 ## Persistence And Privacy
 
 There is no account, analytics SDK, telemetry SDK, or cloud-model fallback. Network use is
 limited to model download URLs and user-initiated external app behavior. Chat is not
-persisted. Clearing app storage removes preferences, inbox metadata, caches, and downloaded
+persisted. Explicit memories and reminder records are stored in a private Room database.
+Clearing app storage removes the database, preferences, inbox metadata, caches, and downloaded
 models. External applications retain anything the user sends through them.
 
 ## Test Coverage
 
 JVM tests cover deterministic action parsing, the synthetic structured-agent workflow,
 model catalog rules, segmented-download boundaries, prompt-context heuristics, reasoning
-cleanup, verified answers, formatting normalization, and local inbox ranking. Android APIs,
-the downloader, model runtime, lifecycle, UI, storage failure, and permissions are not
-covered by instrumentation tests.
+cleanup, verified answers, formatting normalization, local inbox ranking, memory parsing,
+reminder parsing, and memory bounds. Android instrumentation covers Room memory CRUD,
+reminder delivery status, and overdue-reminder expiry. The downloader, model runtime,
+lifecycle recovery, external providers, and permission-denial UI still lack device coverage.

@@ -15,6 +15,8 @@ LocalMind is a privacy-first Android assistant that runs a small language model 
 - Confirmed Android Calendar event creation with provider-ID verification.
 - User-controlled Drive document selection and a device-local shared inbox.
 - Deterministic local inbox search for imported text and metadata.
+- Explicit on-device memories with search, edit, deletion, and clear controls.
+- Confirmed local reminders with notification delivery and reboot restoration.
 - Private activity trace that does not record prompts or response content.
 
 ## Safety Model
@@ -87,6 +89,8 @@ Gemma tiers are optional and may require license acceptance and manual import. S
 | WhatsApp | Opens a confirmed draft; user selects/reviews the chat and sends |
 | Email | Opens a confirmed `mailto:` draft; user sends |
 | Calendar | Creates confirmed all-day events and verifies provider IDs |
+| Reminders | Schedules confirmed local notifications with Android `AlarmManager` |
+| Memories | Stores only explicit `Remember that...` requests in a local Room database |
 | Drive | Opens Android's document picker; user explicitly selects a file |
 | Gmail/Drive search | Test fixtures only; real account search is not connected |
 | Flashlight | Uses `CameraManager` with runtime permission and callback verification |
@@ -99,6 +103,8 @@ LocalMind does not scrape private app databases, inject arbitrary UI input, bypa
 ```text
 androidApp/src/main/       Android application and device adapters
 androidApp/src/test/       JVM unit tests
+androidApp/src/androidTest/ Emulator/device integration tests
+androidApp/schemas/        Versioned Room database schemas
 docs/                      Architecture, models, integrations, privacy, and security
 gradle/                    Gradle wrapper
 ```
@@ -124,6 +130,7 @@ gradle/                    Gradle wrapper
 - PDF, Office document, and image text extraction are not implemented yet.
 - WhatsApp does not expose supported APIs for reading chat history or unattended sending.
 - Calendar editing, deletion, recurrence, and conflict detection are not implemented.
+- Reminder language currently requires `today`, `tomorrow`, or an ISO date plus an explicit time.
 
 ## Contributing
 

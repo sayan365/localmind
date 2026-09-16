@@ -83,4 +83,37 @@ class BasicDeviceActionParserTest {
         assertEquals(BasicDeviceAction.PickDriveDocument, BasicDeviceActionParser.parse("Find a document in Drive"))
         assertEquals(BasicDeviceAction.SearchLocalInbox("admission letter"), BasicDeviceActionParser.parse("Find admission letter in my local inbox"))
     }
+
+    @Test
+    fun parsesExplicitMemoryCommandsWithoutUsingTheModel() {
+        assertEquals(
+            BasicDeviceAction.SaveMemory("my passport expires in 2028"),
+            BasicDeviceActionParser.parse("Remember that my passport expires in 2028")
+        )
+        assertEquals(
+            BasicDeviceAction.SearchMemory("my passport"),
+            BasicDeviceActionParser.parse("What do you remember about my passport?")
+        )
+        assertEquals(BasicDeviceAction.ShowMemories, BasicDeviceActionParser.parse("Show my memories"))
+        assertEquals(
+            BasicDeviceAction.DeleteMemory("passport"),
+            BasicDeviceActionParser.parse("Forget the memory about passport")
+        )
+    }
+
+    @Test
+    fun parsesFutureReminderWithExplicitDateAndTime() {
+        val clock = Clock.fixed(Instant.parse("2026-09-16T08:00:00Z"), ZoneOffset.UTC)
+
+        assertEquals(
+            BasicDeviceAction.CreateReminder(
+                title = "Pay the electricity bill",
+                triggerAtMillis = Instant.parse("2026-09-17T10:00:00Z").toEpochMilli(),
+                displayTime = "Thu, 17 Sep 2026 at 10:00 AM"
+            ),
+            BasicDeviceActionParser.parse("Remind me tomorrow at 10 AM to pay the electricity bill", clock = clock)
+        )
+        assertNull(BasicDeviceActionParser.parse("Remind me tomorrow to pay the electricity bill", clock = clock))
+        assertNull(BasicDeviceActionParser.parse("Remind me today at 7 AM to pay the electricity bill", clock = clock))
+    }
 }

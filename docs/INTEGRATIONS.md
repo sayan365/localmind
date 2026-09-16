@@ -26,6 +26,8 @@ capabilities, rate limits, failure modes, data handling, and verification method
 | Email/Gmail | No inbox access | Open a `mailto:` draft | Draft creation is local; sending requires an email app/network | Implemented with confirmation and user final send |
 | Drive/files | User-selected URI and plain text only | Import a selected reference into the local inbox | Selected locally available content can be used offline | Partial; no automatic Drive search or PDF extraction |
 | Calendar | Find a writable calendar and verify inserted IDs | Create a confirmed all-day event | Provider behavior depends on the configured calendar | Implemented for creation only |
+| Local reminders | Read pending reminder records | Schedule/delete confirmed notifications | Yes | Implemented with inexact alarms and reboot restoration |
+| Local memories | Search explicit saved text | Add, edit, delete, or clear | Yes | Implemented with Room; no embeddings |
 | Local inbox | Search stored text, MIME type, and URI metadata | Add through Share or the document picker | Yes | Implemented, not a document index or RAG system |
 | Gmail API | None | None | No | Not connected |
 | Drive API | None | None | No | Not connected |

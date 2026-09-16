@@ -13,7 +13,8 @@ MainActivity
   |     |-- app launch / flashlight / media / volume
   |     |-- confirmed WhatsApp and email handoffs
   |     |-- confirmed Calendar provider write + verification
-  |     `-- system document picker + local inbox search
+  |     |-- system document picker + local inbox search
+  |     `-- Room memories + AlarmManager reminders
   |
   `-- ordinary conversation
         `-- OnDeviceChatEngine
@@ -39,6 +40,9 @@ APIs. Supported actions are represented by a sealed type and routed explicitly b
 | `AndroidCalendarConnector` | Creates all-day Calendar provider events and verifies returned IDs |
 | `WhatsAppHandoff` / `EmailHandoff` | Creates user-controlled external draft intents |
 | `SharedContentStore` | Keeps up to 50 shared-item records in SharedPreferences |
+| `LocalDataRepository` | Owns bounded memory CRUD/search and reminder persistence |
+| `LocalDataDatabase` | Stores versioned Room memory and reminder records |
+| `ReminderScheduler` | Schedules/cancels alarms; receivers notify, update status, and restore after reboot |
 | `ResponseFormatter` | Renders a small Markdown subset and normalizes common math markup |
 
 ## Structured Agent Foundation
@@ -58,7 +62,8 @@ This distinction matters: the application does not yet have model-driven tool ca
 - Model files and range parts use app-specific external files storage.
 - LiteRT-LM cache files use the app cache directory.
 - Selected document URIs may have persistable read permission when the provider grants it.
-- There is no Room database, conversation store, memory store, embedding index, or file index.
+- Explicit memories and reminder state use the private `localmind.db` Room database.
+- There is no conversation store, embedding index, semantic memory, or document file index.
 
 ## Concurrency And Lifecycle
 
@@ -75,6 +80,7 @@ This distinction matters: the application does not yet have model-driven tool ca
 - App packages are selected from a fixed allowlist.
 - Android owns runtime permission dialogs.
 - Communication handoffs and Calendar writes require visible confirmation.
+- Reminder creation and deletion require visible confirmation; notification permission remains Android-controlled.
 - A handoff is never reported as a completed send.
 - Calendar success requires a provider query for the inserted event ID.
 - Imported files and shared URIs are untrusted input.
@@ -90,7 +96,6 @@ Chat/UI -> Agent coordinator -> LocalModelEngine
                          `----> Local repositories -> Room / files / search index
 ```
 
-The next architecture step is not a full rewrite. First extract activity-owned state into
-small lifecycle-aware coordinators, add a durable local repository for explicit memories
-and reminders, and preserve the existing deterministic action adapters. ADK adoption is a
-separate compatibility milestone recorded in `DECISIONS.md`.
+The next architecture step is to extract activity-owned state into small lifecycle-aware
+coordinators while preserving the repository and deterministic action adapters. ADK adoption
+is a separate compatibility milestone recorded in `DECISIONS.md`.

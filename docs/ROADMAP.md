@@ -15,7 +15,7 @@ Exit criteria: documentation matches code; JVM tests and debug assembly pass.
 
 ## Milestone 1: Durable Local Foundations
 
-Status: next
+Status: complete in code; physical-device acceptance remains
 
 - Introduce a small repository boundary and Room database for explicit memories and reminders.
 - Implement add, list, edit, delete, and clear for memories without embeddings initially.
@@ -27,6 +27,10 @@ Status: next
 
 Exit criteria: with networking disabled, a user can explicitly save a fact, retrieve it,
 inspect/delete it, and create a verifiable local reminder without an LLM-generated tool call.
+
+Implemented verification: JVM parsing/ranking tests, API 36 Room and alarm-receiver tests,
+and live emulator inspection of memory creation and `My data`. A 4 GB physical-device pass
+is still required before calling this production-ready.
 
 ## Milestone 2: Model And Runtime Benchmark
 

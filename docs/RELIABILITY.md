@@ -27,3 +27,6 @@ Upstream throughput can still vary significantly by network route. A project-con
 - Media commands are described as dispatched because Android provides no completion acknowledgement.
 - WhatsApp and email are described as drafts/handoffs because LocalMind cannot verify a final send.
 - Tool execution has explicit states, bounded steps, typed arguments, and honest failure results.
+- Reminder records are persisted before scheduling; scheduling failure removes the new record.
+- Future pending reminders are restored after reboot, while overdue records are expired.
+- Explicit memory content is bounded to 4,000 characters and normalized for deterministic search.

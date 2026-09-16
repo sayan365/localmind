@@ -2,6 +2,10 @@ package ai.localmind.device
 
 import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 sealed interface BasicDeviceAction {
     data class OpenApp(val app: SupportedApp) : BasicDeviceAction
@@ -13,6 +17,11 @@ sealed interface BasicDeviceAction {
     data object PickDriveDocument : BasicDeviceAction
     data class SearchLocalInbox(val query: String) : BasicDeviceAction
     data class CreateCalendarEvent(val title: String, val date: LocalDate) : BasicDeviceAction
+    data class SaveMemory(val content: String) : BasicDeviceAction
+    data class SearchMemory(val query: String) : BasicDeviceAction
+    data class DeleteMemory(val query: String) : BasicDeviceAction
+    data object ShowMemories : BasicDeviceAction
+    data class CreateReminder(val title: String, val triggerAtMillis: Long, val displayTime: String) : BasicDeviceAction
 }
 
 enum class SupportedApp(val displayName: String, val packageNames: List<String>) {
@@ -33,6 +42,9 @@ object BasicDeviceActionParser {
     fun parse(input: String, previousAction: BasicDeviceAction? = null, clock: Clock = Clock.systemDefaultZone()): BasicDeviceAction? {
         parseWhatsApp(input)?.let { return it }
         parseEmail(input)?.let { return it }
+        parseMemory(input)?.let { return it }
+        parseReminder(input, clock)?.let { return it }
+        if (Regex("(?i)\\bremind\\s+me\\b").containsMatchIn(input)) return null
         val text = input.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
         parseInboxSearch(text)?.let { return it }
         parseDrivePicker(text)?.let { return it }
@@ -42,6 +54,65 @@ object BasicDeviceActionParser {
         parseVolume(text)?.let { return it }
         parseMedia(text)?.let { return it }
         return parseContextualFollowUp(text, previousAction)
+    }
+
+    private fun parseMemory(input: String): BasicDeviceAction? {
+        val clean = input.trim()
+        Regex("(?i)^remember\\s+(?:that\\s+)?(.+?)\\s*[.!?]?$").find(clean)?.let { match ->
+            return match.groupValues[1].trim().takeIf(String::isNotBlank)?.let(BasicDeviceAction::SaveMemory)
+        }
+        Regex("(?i)^what\\s+do\\s+you\\s+remember\\s+about\\s+(.+?)\\s*[?]?$").find(clean)?.let { match ->
+            return match.groupValues[1].trim().takeIf(String::isNotBlank)?.let(BasicDeviceAction::SearchMemory)
+        }
+        if (Regex("(?i)^(?:show|list)\\s+(?:all\\s+)?(?:my\\s+)?memories[?]?$|^what\\s+do\\s+you\\s+remember[?]?$").matches(clean)) {
+            return BasicDeviceAction.ShowMemories
+        }
+        Regex("(?i)^(?:forget|delete|remove)\\s+(?:the\\s+)?(?:memory\\s+)?(?:about\\s+)?(.+?)\\s*[.!?]?$").find(clean)?.let { match ->
+            return match.groupValues[1].trim().takeIf { it.length >= 2 }?.let(BasicDeviceAction::DeleteMemory)
+        }
+        return null
+    }
+
+    private fun parseReminder(input: String, clock: Clock): BasicDeviceAction.CreateReminder? {
+        if (!Regex("(?i)\\bremind\\s+me\\b").containsMatchIn(input)) return null
+        val dateMatch = Regex("(?i)\\b(today|tomorrow|20\\d{2}-\\d{1,2}-\\d{1,2})\\b").find(input) ?: return null
+        val timeMatch = Regex("(?i)\\bat\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b").find(input) ?: return null
+        val date = when (dateMatch.value.lowercase(Locale.US)) {
+            "today" -> LocalDate.now(clock)
+            "tomorrow" -> LocalDate.now(clock).plusDays(1)
+            else -> runCatching { LocalDate.parse(dateMatch.value) }.getOrNull()
+        } ?: return null
+        val hourInput = timeMatch.groupValues[1].toIntOrNull() ?: return null
+        val minute = timeMatch.groupValues[2].ifBlank { "0" }.toIntOrNull()?.takeIf { it in 0..59 } ?: return null
+        val meridiem = timeMatch.groupValues[3].lowercase(Locale.US)
+        val hour = when {
+            meridiem == "am" && hourInput == 12 -> 0
+            meridiem == "am" && hourInput in 1..11 -> hourInput
+            meridiem == "pm" && hourInput in 1..11 -> hourInput + 12
+            meridiem == "pm" && hourInput == 12 -> 12
+            meridiem.isBlank() && hourInput in 0..23 -> hourInput
+            else -> return null
+        }
+        val title = reminderTitle(input, dateMatch.value, timeMatch.value) ?: return null
+        val trigger = LocalDateTime.of(date, LocalTime.of(hour, minute)).atZone(clock.zone)
+        if (!trigger.toInstant().isAfter(clock.instant())) return null
+        val display = trigger.format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy 'at' h:mm a", Locale.getDefault()))
+        return BasicDeviceAction.CreateReminder(title, trigger.toInstant().toEpochMilli(), display)
+    }
+
+    private fun reminderTitle(input: String, dateText: String, timeText: String): String? {
+        val afterTo = Regex("(?i)\\bto\\s+(.+)$").find(input)?.groupValues?.get(1)
+        val candidate = if (afterTo != null && afterTo.length < input.length - 5) {
+            afterTo
+        } else {
+            input.replace(timeText, " ", ignoreCase = true).replace(dateText, " ", ignoreCase = true)
+                .replace(Regex("(?i)^\\s*remind\\s+me(?:\\s+to)?\\s*"), "")
+        }
+        return candidate
+            .replace(Regex("(?i)\\b(?:today|tomorrow|20\\d{2}-\\d{1,2}-\\d{1,2})\\b.*$"), "")
+            .trim(' ', '.', ',', '!', '?')
+            .takeIf(String::isNotBlank)
+            ?.replaceFirstChar(Char::uppercase)
     }
 
     private fun parseEmail(input: String): BasicDeviceAction.ComposeEmail? {
@@ -173,7 +244,12 @@ object BasicDeviceActionParser {
         is BasicDeviceAction.ComposeEmail,
         BasicDeviceAction.PickDriveDocument,
         is BasicDeviceAction.SearchLocalInbox,
-        is BasicDeviceAction.CreateCalendarEvent -> null
+        is BasicDeviceAction.CreateCalendarEvent,
+        is BasicDeviceAction.SaveMemory,
+        is BasicDeviceAction.SearchMemory,
+        is BasicDeviceAction.DeleteMemory,
+        BasicDeviceAction.ShowMemories,
+        is BasicDeviceAction.CreateReminder -> null
         null -> null
     }
 
