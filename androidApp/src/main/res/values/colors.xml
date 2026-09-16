@@ -1,0 +1,20 @@
+<resources>
+    <color name="localmind_canvas">#F7F8F4</color>
+    <color name="localmind_surface">#FFFFFF</color>
+    <color name="localmind_input">#F0F3F1</color>
+    <color name="localmind_divider">#D8DEDA</color>
+    <color name="localmind_ink">#121513</color>
+    <color name="localmind_muted">#65706B</color>
+    <color name="localmind_rail">#24312E</color>
+    <color name="localmind_rail_light">#33433F</color>
+    <color name="localmind_trace_text">#E9F0ED</color>
+    <color name="localmind_success">#22A06B</color>
+    <color name="localmind_success_dark">#126B49</color>
+    <color name="localmind_success_soft">#DDF4E9</color>
+    <color name="localmind_warning">#C98518</color>
+    <color name="localmind_warning_dark">#81530C</color>
+    <color name="localmind_warning_soft">#FFF1D6</color>
+    <color name="localmind_blue">#3B82F6</color>
+    <color name="localmind_user_bubble">#1D5D50</color>
+    <color name="localmind_fault">#C44242</color>
+</resources>

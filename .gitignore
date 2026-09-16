@@ -1,0 +1,51 @@
+# Android Studio and local SDK configuration
+.idea/
+*.iml
+local.properties
+.navigation/
+captures/
+
+# Gradle and Kotlin state
+.gradle/
+.kotlin/
+**/build/
+build/
+
+# Native Android intermediates
+.cxx/
+.externalNativeBuild/
+
+# Secrets and signing material
+.env
+.env.*
+!.env.example
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pem
+
+# Model weights and generated packages
+*.litertlm
+*.tflite
+*.onnx
+*.gguf
+*.apk
+*.aab
+
+# Test and tooling output
+coverage/
+*.log
+*.hprof
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Root-level emulator/debug captures
+/*.png
+/*.xml
+
+# Recoverable pre-commit cleanup quarantine
+/.repo-cleanup-backup/
