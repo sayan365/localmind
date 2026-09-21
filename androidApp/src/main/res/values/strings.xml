@@ -4,6 +4,7 @@
     <string name="prompt_open_whatsapp">Open WhatsApp</string>
     <string name="prompt_flashlight_on">Turn on the flashlight</string>
     <string name="prompt_pause_music">Pause the music</string>
+    <string name="prompt_latest_otp">What is my latest OTP?</string>
     <string name="error_local_response">I could not complete that response locally. Please try again.</string>
     <string name="error_memory_read">I could not read local memories. Nothing was deleted.</string>
 </resources>

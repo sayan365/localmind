@@ -44,6 +44,19 @@ is still required before calling this production-ready.
 Exit criteria: `AI_MODEL.md` contains reproducible device measurements and a justified
 default/fallback decision.
 
+## Milestone 1.1: Reliable Assistant And SMS Insights
+
+Status: implemented in code; physical-device format coverage remains
+
+- Route capability questions and sensitive SMS questions before model generation.
+- Add deterministic transaction, balance, account, monthly spending, OTP, and arithmetic handling.
+- Keep raw SMS and OTP values outside model prompts and persistent LocalMind storage.
+- Add response validation and remove model-tier switching messages from ordinary chat.
+- Expose permission state and Android revocation controls.
+
+Exit criteria: varied phrasing resolves to typed local queries, denied permissions recover cleanly,
+and a physical phone validates representative bank and OTP formats without network access.
+
 ## Milestone 3: Agent Foundation
 
 - Complete a JDK 21 and APK/RAM compatibility spike for ADK Kotlin.

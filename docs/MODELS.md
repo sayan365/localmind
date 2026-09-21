@@ -46,7 +46,10 @@ The app recommends Lite below 8 GiB reported RAM and Full from 8 GiB. Gemma 3 re
 - SDK: `com.google.ai.edge.litertlm:litertlm-android:0.16.1`.
 - Initialization and generation run off the Android main thread.
 - Each request uses a fresh native conversation. Only the immediately preceding exchange is included when deterministic relevance checks identify a follow-up; unrelated topics start with clean context. This avoids both template-delta failures and repetitive context contamination on the compact model.
-- Verified local resolvers run before generation for supported factual and mathematical requests. On the Lite tier, unsupported knowledge questions are declined instead of allowing the model to invent a confident answer.
+- Verified local resolvers run before generation for supported factual and mathematical requests.
+  Other requests use low-randomness generation followed by checks for template leakage,
+  repetition, and false action claims. These checks reduce known failure modes but cannot verify
+  every arbitrary factual answer from a 0.6B model.
 - Common LaTeX delimiters and commands in model output are normalized into readable native Android text.
 - GPU model initialization has a 30-second timeout; CPU models have a 120-second cold-start limit. A minimal recovery activity can run in a separate app process, terminate a wedged inference process, and relaunch LocalMind with the persisted Lite selection. The reason is shown in chat after recovery.
 - The chat composer is unavailable until a model is ready.

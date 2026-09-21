@@ -10,6 +10,10 @@ LocalMind is designed for on-device inference. It has no cloud-model fallback an
 - A completion marker containing model size and public integrity metadata.
 - Explicit memories and reminder records in LocalMind's private Room database.
 
+SMS bodies, parsed transactions, balances, and OTPs are not stored by LocalMind. They exist in
+memory only while answering the user's explicit request. OTP values are masked until revealed,
+and the reveal dialog blocks screenshots.
+
 Chat messages are currently held in memory for the active app session and are not persisted as conversation history.
 
 ## Data Sent Elsewhere
@@ -19,6 +23,7 @@ Chat messages are currently held in memory for the active app session and are no
 - Android Calendar receives only an event the user explicitly confirmed.
 - Android's alarm and notification services receive only a reminder the user confirmed.
 - No Gmail or Drive account API is currently connected.
+- SMS content is never sent to the local language model or a network service.
 
 ## User Control
 
@@ -27,6 +32,8 @@ Chat messages are currently held in memory for the active app session and are no
 - Drive content enters LocalMind only after selection in Android's document picker or an explicit share action.
 - Memories can be inspected, edited, deleted, or cleared from `More options > My data`.
 - Pending reminders can be inspected and deleted from `More options > My data`.
+- SMS, Calendar, and Camera permission state is visible under `More options > Privacy & permissions`.
+- Permissions can be revoked from Android app settings.
 - Clearing application storage removes LocalMind's database, private preferences, inbox metadata, and downloaded models.
 
 Do not include real personal data in bug reports. Redact screenshots, logs, prompts, contact names, and document contents.

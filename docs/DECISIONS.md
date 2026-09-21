@@ -1,5 +1,25 @@
 # Architecture Decisions
 
+## 2026-09-21: Ship SMS Insights In The Direct APK
+
+**Status:** Implemented
+
+**Problem:** Users need to ask naturally worded questions about their own recent SMS, including
+OTPs, transactions, balances, spending, and observed accounts. These values are sensitive and
+small-model generation is not a trustworthy source.
+
+**Decision:** The open-source direct APK may request `READ_SMS` only after an explicit matching
+question and an in-app explanation. Android's SMS provider supplies bounded records to typed,
+deterministic parsers. Raw messages and parsed values are not persisted or sent to the LLM.
+
+OTPs are restricted to the previous 24 hours, masked until explicit reveal, and shown in a dialog
+with screenshot protection. Financial outputs are described as SMS-derived estimates rather than
+live bank data.
+
+**Trade-offs:** Bank SMS formats vary, so some valid messages will be missed and parser fixtures
+must expand over time. Direct APK distribution avoids making a false Google Play availability
+claim; any future Play release must re-evaluate restricted SMS permission eligibility.
+
 ## 2026-09-17: Defer ADK Kotlin Adoption Pending A Compatibility Spike
 
 **Status:** Proposed, not implemented

@@ -10,18 +10,28 @@ import ai.localmind.device.AndroidCalendarConnector
 import ai.localmind.device.WhatsAppHandoff
 import ai.localmind.device.EmailHandoff
 import ai.localmind.device.model.*
+import ai.localmind.assistant.CapabilityRegistry
+import ai.localmind.assistant.ConversationSignals
 import ai.localmind.core.CalendarEvent
 import ai.localmind.ui.ResponseFormatter
 import ai.localmind.localdata.LocalDataRepository
 import ai.localmind.localdata.MemoryRecord
 import ai.localmind.localdata.ReminderRecord
 import ai.localmind.localdata.ReminderScheduler
+import ai.localmind.sms.SmsInsightAnalyzer
+import ai.localmind.sms.SmsInsightResult
+import ai.localmind.sms.SmsQuery
+import ai.localmind.sms.SmsQueryParser
+import ai.localmind.sms.SmsRepository
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.AlertDialog
 import android.app.DownloadManager
 import android.Manifest
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
@@ -34,12 +44,15 @@ import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.*
 import java.io.File
 import java.time.Instant
+import java.time.Clock
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
@@ -73,6 +86,7 @@ class MainActivity : Activity() {
     private var pendingPermissionAction: BasicDeviceAction.SetTorch? = null
     private var pendingCalendarAction: BasicDeviceAction.CreateCalendarEvent? = null
     private var pendingReminderAction: BasicDeviceAction.CreateReminder? = null
+    private var pendingSmsQuery: SmsQuery? = null
     private var lastBasicAction: BasicDeviceAction? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -120,6 +134,15 @@ class MainActivity : Activity() {
                 pendingReminderAction = null
                 if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && action != null) createReminder(action)
                 else finishBasicAction(DeviceActionResult(false, "Notifications were not allowed, so no reminder was scheduled."), "reminder.create")
+            }
+            SMS_PERMISSION_REQUEST -> {
+                val query = pendingSmsQuery
+                pendingSmsQuery = null
+                if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && query != null) executeSmsQuery(query)
+                else {
+                    addAssistantMessage("SMS access was not allowed, so I did not read your messages.")
+                    recordActivity("Permission denied", "sms.read")
+                }
             }
         }
     }
@@ -198,6 +221,7 @@ class MainActivity : Activity() {
             addView(actionButton("Open WhatsApp", false) { requestInput.setText(R.string.prompt_open_whatsapp); submitRequest() }, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(8) })
             addView(actionButton("Flashlight on", false) { requestInput.setText(R.string.prompt_flashlight_on); submitRequest() }, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(8) })
             addView(actionButton("Pause music", false) { requestInput.setText(R.string.prompt_pause_music); submitRequest() }, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(8) })
+            addView(actionButton("Latest OTP", false) { requestInput.setText(R.string.prompt_latest_otp); submitRequest() }, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(8) })
         })
     }
 
@@ -216,6 +240,7 @@ class MainActivity : Activity() {
             val sharedCount = SharedContentStore(this@MainActivity).list().size
             menu.add("Shared inbox${if (sharedCount > 0) " ($sharedCount)" else ""}")
             menu.add("My data")
+            menu.add("Privacy & permissions")
             menu.add("Use Qwen3 0.6B Lite")
             menu.add("Use Gemma 3 1B")
             menu.add("Use Gemma 4 Full")
@@ -230,6 +255,7 @@ class MainActivity : Activity() {
                     "Use Gemma 3 1B" -> selectModel(LocalModelCatalog.standard)
                     "Use Gemma 4 Full" -> selectModel(LocalModelCatalog.full)
                     "My data" -> showMyData()
+                    "Privacy & permissions" -> showPrivacyAndPermissions()
                     else -> if (it.title.toString().startsWith("Shared inbox")) showSharedInbox()
                 }
                 true
@@ -515,6 +541,20 @@ class MainActivity : Activity() {
         val request = requestInput.text.toString().trim(); if (request.isEmpty() || generating) return
         requestInput.text.clear(); starterPrompts.visibility = View.GONE
         addUserMessage(request)
+        ConversationSignals.localResponse(request)?.let {
+            addAssistantMessage(it)
+            recordActivity("Conversation response", "local")
+            return
+        }
+        if (CapabilityRegistry.isCapabilityQuestion(request)) {
+            addAssistantMessage(CapabilityRegistry.userFacingSummary())
+            recordActivity("Capabilities shown", "local")
+            return
+        }
+        SmsQueryParser.parse(request)?.let {
+            requestSmsInsights(it)
+            return
+        }
         BasicDeviceActionParser.parse(request, lastBasicAction)?.let {
             executeBasicAction(it)
             return
@@ -537,6 +577,143 @@ class MainActivity : Activity() {
                 generating = false; setComposerEnabled(true); recordActivity("Generation failed", error.javaClass.simpleName)
             } }
         )
+    }
+
+    private fun requestSmsInsights(query: SmsQuery) {
+        if (checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
+            executeSmsQuery(query)
+            return
+        }
+        pendingSmsQuery = query
+        AlertDialog.Builder(this)
+            .setTitle("Allow SMS insights?")
+            .setMessage(
+                "LocalMind will read recent SMS only when you ask about an OTP, transaction, balance, or spending. " +
+                    "Messages stay on this phone, are not stored by LocalMind, and are never sent to the AI model."
+            )
+            .setNegativeButton("Not now") { _, _ ->
+                pendingSmsQuery = null
+                addAssistantMessage("SMS access was not enabled. You can ask again whenever you want to use SMS insights.")
+            }
+            .setPositiveButton("Continue") { _, _ ->
+                requestPermissions(arrayOf(Manifest.permission.READ_SMS), SMS_PERMISSION_REQUEST)
+            }
+            .show()
+    }
+
+    private fun executeSmsQuery(query: SmsQuery) {
+        generating = true
+        setComposerEnabled(false)
+        val pending = addAssistantMessage("Checking recent messages on this phone...")
+        fileExecutor.execute {
+            val result = runCatching {
+                val repository = SmsRepository(contentResolver)
+                if (query == SmsQuery.UnreadCount) {
+                    return@runCatching SmsInsightResult.Text(
+                        when (val count = repository.countUnread()) {
+                            0 -> "You have no unread SMS messages."
+                            1 -> "You have **1 unread SMS message**."
+                            else -> "You have **$count unread SMS messages**."
+                        }
+                    )
+                }
+                val now = System.currentTimeMillis()
+                val since = when (query) {
+                    is SmsQuery.LatestOtp -> now - OTP_LOOKBACK_MILLIS
+                    else -> now - FINANCE_LOOKBACK_MILLIS
+                }
+                val messages = repository.readSince(since)
+                SmsInsightAnalyzer.analyze(query, messages, Clock.systemDefaultZone())
+            }
+            runOnUiThread {
+                generating = false
+                setComposerEnabled(true)
+                result.onSuccess { insight ->
+                    when (insight) {
+                        is SmsInsightResult.Text -> pending.text = ResponseFormatter.format(insight.message)
+                        is SmsInsightResult.Otp -> {
+                            pending.text = ResponseFormatter.format(
+                                "I found a recent OTP from ${insight.sender}. It is hidden until you reveal it."
+                            )
+                            showOtpDialog(insight)
+                        }
+                    }
+                    recordActivity("SMS insight completed", smsQueryLabel(query))
+                }.onFailure { error ->
+                    pending.text = ResponseFormatter.format("I couldn't read recent messages on this phone.")
+                    recordActivity("SMS insight failed", error.javaClass.simpleName)
+                }
+                scrollToBottom()
+            }
+        }
+    }
+
+    private fun showOtpDialog(result: SmsInsightResult.Otp) {
+        val codeView = TextView(this).apply {
+            text = maskOtp(result.code)
+            textSize = 28f
+            typeface = Typeface.MONOSPACE
+            gravity = Gravity.CENTER
+            setTextColor(getColor(R.color.localmind_ink))
+            setPadding(0, dp(18), 0, dp(18))
+        }
+        val details = body("From ${result.sender}\n${formatSmsTime(result.receivedAtMillis)}\n\nThe code is kept in memory only for this dialog.")
+        val reveal = actionButton("Reveal", true) {
+            codeView.text = result.code
+        }
+        val copy = actionButton("Copy", false) {
+            if (codeView.text.toString() == result.code) {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("One-time code", result.code))
+                Toast.makeText(this, "OTP copied", Toast.LENGTH_SHORT).show()
+                mainHandler.postDelayed({
+                    val current = clipboard.primaryClip?.takeIf { it.itemCount > 0 }
+                        ?.getItemAt(0)?.coerceToText(this)?.toString()
+                    if (current == result.code) {
+                        if (Build.VERSION.SDK_INT >= 28) clipboard.clearPrimaryClip()
+                        else clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+                    }
+                }, OTP_CLIPBOARD_CLEAR_MILLIS)
+            } else {
+                Toast.makeText(this, "Reveal the OTP before copying", Toast.LENGTH_SHORT).show()
+            }
+        }
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(reveal, LinearLayout.LayoutParams(0, dp(46), 1f))
+            addView(copy, LinearLayout.LayoutParams(0, dp(46), 1f).apply { leftMargin = dp(8) })
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), 0, dp(20), 0)
+            addView(details)
+            addView(codeView)
+            addView(controls)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Recent OTP")
+            .setView(content)
+            .setNegativeButton("Close", null)
+            .create()
+            .also { dialog ->
+                dialog.setOnShowListener { dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+                dialog.show()
+            }
+    }
+
+    private fun maskOtp(code: String): String = "•".repeat(code.length)
+
+    private fun formatSmsTime(receivedAtMillis: Long): String = DateTimeFormatter
+        .ofPattern("d MMM yyyy, h:mm a")
+        .format(Instant.ofEpochMilli(receivedAtMillis).atZone(ZoneId.systemDefault()))
+
+    private fun smsQueryLabel(query: SmsQuery): String = when (query) {
+        SmsQuery.UnreadCount -> "sms.unread_count"
+        is SmsQuery.LatestOtp -> "sms.latest_otp"
+        is SmsQuery.LatestTransaction -> "sms.latest_transaction"
+        is SmsQuery.LatestBalance -> "sms.latest_balance"
+        is SmsQuery.Spending -> "sms.spending"
+        SmsQuery.AccountSummary -> "sms.accounts"
     }
 
     private fun executeBasicAction(action: BasicDeviceAction) {
@@ -669,7 +846,11 @@ class MainActivity : Activity() {
                     .onSuccess { (memoryCount, reminderCount) ->
                         AlertDialog.Builder(this)
                             .setTitle("My data")
-                            .setMessage("AI processing: On-device\nCloud AI: Disabled\n\nStored memories: $memoryCount\nPending reminders: $reminderCount")
+                            .setMessage(
+                                "AI processing: On-device\nCloud AI: Disabled\n\n" +
+                                    "Stored memories: $memoryCount\nPending reminders: $reminderCount\n" +
+                                    "SMS copied or stored: None"
+                            )
                             .setNegativeButton("Close", null)
                             .setNeutralButton("Reminders") { _, _ -> showReminders() }
                             .setPositiveButton("Memories") { _, _ -> showMemories() }
@@ -677,6 +858,27 @@ class MainActivity : Activity() {
                     }
             }
         }
+    }
+
+    private fun showPrivacyAndPermissions() {
+        val smsAccess = if (checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) "Allowed" else "Not allowed"
+        val calendarAccess = if (
+            checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED &&
+            checkSelfPermission(Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
+        ) "Allowed" else "Not allowed"
+        val cameraAccess = if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) "Allowed" else "Not allowed"
+        AlertDialog.Builder(this)
+            .setTitle("Privacy & permissions")
+            .setMessage(
+                "AI processing: On-device\nCloud AI: Disabled\nChat history: Not stored\n\n" +
+                    "SMS insights: $smsAccess\nCalendar: $calendarAccess\nFlashlight: $cameraAccess\n\n" +
+                    "SMS is read only when you ask. Raw messages and OTPs are not saved by LocalMind or sent to the model."
+            )
+            .setNegativeButton("Close", null)
+            .setPositiveButton("Android settings") { _, _ ->
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            }
+            .show()
     }
 
     private fun showMemories() {
@@ -1028,6 +1230,10 @@ class MainActivity : Activity() {
     companion object {
         const val EXTRA_SHARED_CONTENT_ADDED = "shared_content_added"
         const val EXTRA_MODEL_NOTICE = "model_notice"
+        private const val SMS_PERMISSION_REQUEST = 104
+        private const val OTP_LOOKBACK_MILLIS = 24L * 60L * 60L * 1000L
+        private const val OTP_CLIPBOARD_CLEAR_MILLIS = 60_000L
+        private const val FINANCE_LOOKBACK_MILLIS = 400L * 24L * 60L * 60L * 1000L
         private const val IMPORT_MODEL_REQUEST = 72
         private const val CAMERA_PERMISSION_REQUEST = 73
         private const val CALENDAR_PERMISSION_REQUEST = 74

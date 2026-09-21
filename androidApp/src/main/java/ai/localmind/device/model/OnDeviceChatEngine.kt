@@ -57,14 +57,18 @@ class LiteRtChatEngine(
             runCatching {
                 val runtime = checkNotNull(engine) { "The local model is not ready." }
                 var answer = verifiedLocalAnswer(prompt).orEmpty()
-                if (answer.isBlank() && model == LocalModelCatalog.lite && requiresReliableKnowledge(prompt)) {
-                    answer = LITE_KNOWLEDGE_LIMIT
-                }
                 if (answer.isBlank()) {
                     val renderedPrompt = buildConversationPrompt(history, prompt)
                     val reasoning = shouldUseThinking(prompt)
                     answer = runTurn(runtime, renderedPrompt, reasoning)
                     if (answer.isBlank() && reasoning) answer = runTurn(runtime, renderedPrompt, false)
+                    val previousAssistant = history.lastOrNull { it.speaker == "LocalMind" }?.text
+                    if (ResponseQualityGate.rejectionReason(prompt, answer, previousAssistant) != null) {
+                        answer = runTurn(runtime, ResponseQualityGate.retryPrompt(prompt), false)
+                    }
+                    if (ResponseQualityGate.rejectionReason(prompt, answer, previousAssistant) != null) {
+                        answer = ResponseQualityGate.SAFE_FALLBACK
+                    }
                 }
                 answer.ifBlank { "I could not produce a response. Please try rephrasing that." }
                     .also {
@@ -113,7 +117,7 @@ class LiteRtChatEngine(
 
     private fun conversationConfig() = ConversationConfig(
         systemInstruction = Contents.of(SYSTEM_INSTRUCTION),
-        samplerConfig = SamplerConfig(topK = 40, topP = 0.9, temperature = 0.7, seed = 24),
+        samplerConfig = SamplerConfig(topK = 20, topP = 0.85, temperature = 0.25, seed = 24),
         maxOutputToken = model.maxOutputTokens,
         thinkingConfig = ThinkingConfig(enableThinking = model.thinkingEnabled, thinkingTokenBudget = 128)
     )
@@ -122,6 +126,9 @@ class LiteRtChatEngine(
         private const val SYSTEM_INSTRUCTION = """
             You are LocalMind, a practical and accurate assistant running privately on this Android device.
             Answer the current request directly. If the topic changes, do not repeat or continue the previous answer.
+            Your real capabilities are: local chat and drafting; deterministic phone controls; confirmed WhatsApp and email drafts; calendar events; reminders; explicit memories; imported text search; and on-request SMS insights for unread counts, recent OTPs, transactions, balances mentioned in SMS, and spending totals.
+            You cannot read WhatsApp history, obtain live bank balances, automatically send messages, browse the web, or use cloud AI. Never invent access to phone data.
+            If you are uncertain about a factual answer, say so briefly instead of guessing. Check that the answer addresses the current question before finishing.
             When asked to write or draft something, produce a useful draft immediately from the details available. Do not ask the user to repeat details they already gave.
             Avoid canned phrases such as "let me help" and "let me know if you need more help". Use concise Markdown when lists or code improve readability.
             Write mathematical notation as readable plain text. Do not use LaTeX delimiters or commands.
@@ -130,11 +137,6 @@ class LiteRtChatEngine(
             Do not reveal hidden reasoning. Answer directly in the user's language when practical.
         """
 
-        private const val LITE_KNOWLEDGE_LIMIT = """
-            **A stronger local model is needed for this question.**
-
-            Qwen3 0.6B Lite is intended for drafting and simple requests, not dependable factual or academic answers. Choose **Gemma 3 1B** from the menu for stronger local responses.
-        """
     }
 }
 
@@ -181,7 +183,7 @@ internal fun trimHistory(history: MutableList<ChatTurn>) {
 
 internal fun String.cleanModelResponse(): String =
     discardThinkingTrace()
-        .replace(Regex("<\\|im_(?:start|end)\\|>"), "")
+        .replace(Regex("<\\|[^|>]+\\|>"), "")
         .trim()
 
 private fun String.discardThinkingTrace(): String {

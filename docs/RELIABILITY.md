@@ -18,7 +18,20 @@ Upstream throughput can still vary significantly by network route. A project-con
 - Initialization has bounded timeouts and a separate recovery activity.
 - Failed larger-model initialization can fall back to an already installed Lite tier.
 - Hidden reasoning markers and unsupported formatting are removed before display.
-- Deterministic local answers cover a small set of known factual/math failures; unsupported knowledge requests on the Lite tier are not presented as verified facts.
+- Deterministic local answers cover a small set of known factual/math failures. Arbitrary
+  world-knowledge answers from the Lite tier remain a documented quality limitation.
+- Model output is checked for template leakage, repeated paragraphs, repetition of an unrelated
+  prior answer, and false action-completion claims. One clean retry is allowed before an honest fallback.
+- Basic arithmetic is evaluated deterministically instead of delegated to the model.
+
+## SMS Insights
+
+- SMS queries are bounded to 1,000 rows, a feature-specific lookback period, and 2,000 characters per body.
+- OTP lookup accepts only messages with explicit OTP/security-code context and a 4-8 digit code.
+- Copied OTP values are cleared from the clipboard after 60 seconds when they have not already changed.
+- Financial results come from deterministic parsing and include source timing where applicable.
+- Balance responses are labeled as the latest balance mentioned in SMS, not a live balance.
+- Monthly spending reports its message count and warns about incomplete message coverage.
 
 ## Actions
 

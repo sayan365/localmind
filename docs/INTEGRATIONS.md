@@ -29,6 +29,7 @@ capabilities, rate limits, failure modes, data handling, and verification method
 | Local reminders | Read pending reminder records | Schedule/delete confirmed notifications | Yes | Implemented with inexact alarms and reboot restoration |
 | Local memories | Search explicit saved text | Add, edit, delete, or clear | Yes | Implemented with Room; no embeddings |
 | Local inbox | Search stored text, MIME type, and URI metadata | Add through Share or the document picker | Yes | Implemented, not a document index or RAG system |
+| Android SMS | Search bounded recent messages after runtime consent | No SMS modification | Yes | Implemented for OTP and financial-message insights |
 | Gmail API | None | None | No | Not connected |
 | Drive API | None | None | No | Not connected |
 
@@ -87,3 +88,26 @@ LocalMind can also parse explicit requests such as `Send a WhatsApp message to R
 - Gmail inbox search and unattended Drive search still require authenticated Google APIs. LocalMind does not scrape either application's private UI or data.
 
 Full UI automation through an Accessibility Service is intentionally outside this MVP because it is fragile, permission-sensitive, and inappropriate as a hidden general-purpose control path.
+
+## SMS Insights
+
+The direct APK declares `READ_SMS`, but LocalMind does not request it during onboarding. The
+first relevant question shows an in-app explanation and then Android's runtime permission UI.
+
+Supported query families include differently worded requests for:
+
+- the current unread SMS count;
+- the latest OTP, optionally filtered by a service such as Netflix;
+- the latest transaction, optionally filtered by an account ending;
+- the latest balance mentioned in a bank SMS;
+- debit-message spending totals for this month, last month, or a named month;
+- account endings observed in recent bank messages.
+
+SMS reads are bounded by time, row count, and body length. Parsing is deterministic and occurs
+in memory. Raw messages and OTPs are not persisted, logged, or included in a model prompt. OTP
+search is limited to 24 hours and uses a masked dialog with screenshot protection. Financial
+answers cite sender and time where applicable and never claim to be live bank records.
+
+Limitations: bank formats vary, deleted or missing messages cannot be counted, cash and some
+reversals may be absent, and multi-currency totals are not yet supported. This direct APK is not
+currently presented as compliant with Google Play's restricted SMS-permission distribution rules.

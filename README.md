@@ -17,6 +17,9 @@ LocalMind is a privacy-first Android assistant that runs a small language model 
 - Deterministic local inbox search for imported text and metadata.
 - Explicit on-device memories with search, edit, deletion, and clear controls.
 - Confirmed local reminders with notification delivery and reboot restoration.
+- On-request SMS insights for unread counts, recent OTPs, bank transactions, balances mentioned in messages, account endings, and monthly spending.
+- A response quality gate that rejects model-template leaks, repeated answers, and false action-completion claims.
+- Deterministic local arithmetic for basic expressions.
 - Private activity trace that does not record prompts or response content.
 
 ## Safety Model
@@ -32,7 +35,14 @@ User request
 
 Ordinary conversation
   -> LiteRT-LM
-  -> on-device response
+  -> response quality gate
+  -> on-device response or honest fallback
+
+Sensitive SMS question
+  -> runtime permission
+  -> bounded Android SMS query
+  -> deterministic local parser
+  -> cited result; raw SMS never enters the model
 ```
 
 Consequential actions remain visible and user-controlled. WhatsApp and email drafts are never sent automatically.
@@ -95,6 +105,7 @@ Gemma tiers are optional and may require license acceptance and manual import. S
 | Gmail/Drive search | Test fixtures only; real account search is not connected |
 | Flashlight | Uses `CameraManager` with runtime permission and callback verification |
 | Media | Dispatches Android media keys; Android provides no completion acknowledgement |
+| SMS insights | Reads recent inbox messages only after permission and only when asked; raw messages are not stored or passed to the model |
 
 LocalMind does not scrape private app databases, inject arbitrary UI input, bypass Android permissions, or silently connect a cloud model.
 
@@ -129,6 +140,8 @@ gradle/                    Gradle wrapper
 - Gmail inbox search and automatic Drive search require a future OAuth integration.
 - PDF, Office document, and image text extraction are not implemented yet.
 - WhatsApp does not expose supported APIs for reading chat history or unattended sending.
+- SMS balance and spending answers are estimates from available notification messages, not live bank records or financial advice.
+- OTP lookup searches only the last 24 hours and reveals the result in a secure, masked dialog.
 - Calendar editing, deletion, recurrence, and conflict detection are not implemented.
 - Reminder language currently requires `today`, `tomorrow`, or an ISO date plus an explicit time.
 

@@ -1,6 +1,6 @@
 # Current State
 
-Audit date: 2026-09-17
+Audit date: 2026-09-21
 
 This document describes the repository as it exists. Planned capabilities are not listed
 as implemented.
@@ -43,6 +43,10 @@ representative 4 GB physical-device run remain unmeasured for this milestone.
 - Room-backed explicit memories with local search, edit, delete, and clear controls.
 - Confirmed local reminders using `AlarmManager`, notifications, and reboot restoration.
 - A `My data` dialog that reports and exposes the implemented memory and reminder stores.
+- On-demand SMS insights for recent OTPs, latest transactions, balances mentioned in messages,
+  account endings, and monthly debit totals.
+- A deterministic capability answer, basic arithmetic evaluator, and model-response quality gate.
+- A privacy/permissions dialog with a direct route to Android's app settings.
 - In-memory activity trace that avoids prompt and response bodies.
 
 ## Partial Or Experimental
@@ -68,7 +72,9 @@ representative 4 GB physical-device run remain unmeasured for this milestone.
 
 ## Known Problems And Risks
 
-1. Qwen3 0.6B has limited factual and reasoning quality. A tiny hard-coded resolver covers only a few previously observed failures.
+1. Qwen3 0.6B has limited factual and reasoning quality. Lower sampling randomness, a quality
+   gate, deterministic arithmetic, and a few verified answers reduce known failures but cannot
+   prove arbitrary world-knowledge answers correct.
 2. The download path uses 16 concurrent HTTP ranges. It is resumable, but throughput, battery cost, and server behavior are not adaptively controlled or benchmarked.
 3. Model assembly temporarily needs space for both all part files and the assembled model. Verification then reads the complete file again.
 4. Plain-text document imports are now streamed off the UI thread and capped at 250,000 characters, but cancellation and encoding selection are not exposed.
@@ -93,6 +99,7 @@ representative 4 GB physical-device run remain unmeasured for this milestone.
 | `READ_CALENDAR` | Select and verify Calendar provider data | Yes, after confirmation |
 | `WRITE_CALENDAR` | Insert a confirmed event | Yes, after confirmation |
 | `POST_NOTIFICATIONS` | Show confirmed local reminders | Yes, when the first reminder is created on Android 13+ |
+| `READ_SMS` | Answer an explicit OTP, transaction, balance, account, or spending question | Yes, after an in-app explanation |
 | `RECEIVE_BOOT_COMPLETED` | Restore future pending reminders after restart | No |
 
 ## Persistence And Privacy
@@ -102,6 +109,8 @@ limited to model download URLs and user-initiated external app behavior. Chat is
 persisted. Explicit memories and reminder records are stored in a private Room database.
 Clearing app storage removes the database, preferences, inbox metadata, caches, and downloaded
 models. External applications retain anything the user sends through them.
+SMS bodies are queried on demand and kept only in process memory while the requested analysis
+runs. They are not copied to Room, preferences, the model prompt, or the activity trace.
 
 ## Test Coverage
 

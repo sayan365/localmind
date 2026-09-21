@@ -1,6 +1,6 @@
 # Architecture
 
-Last audited: 2026-09-17
+Last audited: 2026-09-21
 
 LocalMind is a single-module native Android application. It uses classic Android Views
 created in Kotlin code; it does not use Compose, a backend, or a cloud inference service.
@@ -14,12 +14,14 @@ MainActivity
   |     |-- confirmed WhatsApp and email handoffs
   |     |-- confirmed Calendar provider write + verification
   |     |-- system document picker + local inbox search
-  |     `-- Room memories + AlarmManager reminders
+  |     |-- Room memories + AlarmManager reminders
+  |     `-- bounded SMS query + deterministic financial/OTP analysis
   |
   `-- ordinary conversation
         `-- OnDeviceChatEngine
               `-- LiteRtChatEngine
-                    `-- LiteRT-LM Engine / one Conversation per turn
+                    |-- LiteRT-LM Engine / one Conversation per turn
+                    `-- response quality gate + one bounded retry
 ```
 
 `BasicDeviceActionParser` runs before model generation. Model text cannot invoke Android
@@ -44,6 +46,11 @@ APIs. Supported actions are represented by a sealed type and routed explicitly b
 | `LocalDataDatabase` | Stores versioned Room memory and reminder records |
 | `ReminderScheduler` | Schedules/cancels alarms; receivers notify, update status, and restore after reboot |
 | `ResponseFormatter` | Renders a small Markdown subset and normalizes common math markup |
+| `CapabilityRegistry` | Supplies the truthful, deterministic answer to capability questions |
+| `SmsQueryParser` | Maps varied personal SMS questions to typed OTP/finance queries |
+| `SmsRepository` | Performs bounded, on-demand reads from Android's SMS provider |
+| `SmsInsightAnalyzer` | Extracts OTPs, transactions, balances, account endings, and spending without an LLM |
+| `ResponseQualityGate` | Rejects leaked model syntax, repeated output, and unsupported completion claims |
 
 ## Structured Agent Foundation
 
@@ -77,6 +84,8 @@ This distinction matters: the application does not yet have model-driven tool ca
 ## Trust Boundaries
 
 - Model output is untrusted text and cannot execute a tool directly.
+- Raw SMS bodies and OTPs never enter the model, database, activity trace, or logs.
+- SMS data is queried only after an explicit question and Android runtime permission.
 - App packages are selected from a fixed allowlist.
 - Android owns runtime permission dialogs.
 - Communication handoffs and Calendar writes require visible confirmation.

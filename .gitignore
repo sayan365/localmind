@@ -35,6 +35,7 @@ keystore.properties
 
 # Test and tooling output
 coverage/
+premium-audit.json
 *.log
 *.hprof
 

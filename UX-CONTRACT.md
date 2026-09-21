@@ -11,6 +11,8 @@
 | Reminder list | Native single-choice dialog | Select a pending item to delete; empty state explains creation command |
 | Date/time parsing | `BasicDeviceActionParser` | English `today`, `tomorrow`, or ISO date plus explicit time; ambiguous input does not schedule |
 | Feedback | Assistant message plus private activity event | Success is reported only after persistence/scheduling returns successfully |
+| Sensitive SMS access | Matching chat request, then Android permission | Explain first; query only on demand; never persist or send raw SMS to the model |
+| OTP reveal | Secure native dialog | Mask by default; reveal before copy; no OTP value in activity trace |
 
 ## Data Lifecycle
 
@@ -35,3 +37,4 @@
 - Icon-only controls have content descriptions.
 - Text remains readable at system font scaling; dialog content may scroll.
 - Status messages use text, not color alone.
+- Sensitive OTP values are not exposed until a labeled Reveal action is used.

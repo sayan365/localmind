@@ -98,12 +98,8 @@ class LocalModelCatalogTest {
             verifiedLocalAnswer("National bird of India")
         )
         assertEquals(true, verifiedLocalAnswer("derivative of sin 10")!!.contains("cos(10) is approximately -0.8391"))
-    }
-
-    @Test
-    fun liteTierRejectsUnsupportedKnowledgeInsteadOfGuessing() {
-        assertEquals(true, requiresReliableKnowledge("What is photosynthesis?"))
-        assertEquals(false, requiresReliableKnowledge("Write a leave message for HR"))
+        assertEquals("**Answer:** 14", verifiedLocalAnswer("calculate 2 + 3 * 4"))
+        assertEquals("**Answer:** 20", verifiedLocalAnswer("What is (2 + 3) * 4?"))
     }
 
     @Test
